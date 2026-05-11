@@ -1,0 +1,302 @@
+{% set in_switch = data.api_json.new_switch_list | selectattr('type', 'equalto', 'in') | list | first | default({}) %}
+{% set in_hostname = in_switch.hostname | default('未找到') %}
+{% set out_switch = data.api_json.new_switch_list | selectattr('type', 'equalto', 'out') | list | first | default({}) %}
+{% set out_hostname = out_switch.hostname | default('未找到') %}
+{% set out_sn = namespace(val="") %}
+{% set in_sn = namespace(val="") %}
+{% for sw in data.api_json.new_switch_list %}
+{% if sw.type == "out" %}{% set out_sn.val = sw.sn %}{% endif %}
+{% if sw.type == "in" %}{% set in_sn.val = sw.sn %}{% endif %}
+{% endfor %}
+#
+ version 7.1.0, Release 2612P02
+#
+sysname {{ in_hostname }}
+#
+ clock timezone Beijing add 08:00:00
+#
+ irf mac-address persistent timer
+ irf auto-update enable
+ undo irf link-delay
+ irf member 1 priority 1
+#
+ undo ip load-sharing local-first enable
+ ip load-sharing mode per-flow dest-ip src-ip ip-pro dest-port src-port global
+#
+ lldp global enable
+#
+ system-working-mode standard
+ hardware-resource switch-mode 4
+ hardware-resource routing-mode ipv6-128
+ hardware-resource vxlan l3gw8k
+ password-recovery enable
+#
+vlan 1
+#
+vlan 10
+ name EX-Sevice-Vlan
+ description EX-Sevice-Vlan
+#
+vlan 20
+ name IN-Sevice-Vlan
+ description IN-Sevice-Vlan
+#
+stp global enable
+{% if out_switch.to_iin and out_switch.to_iin != '' %}
+#
+interface Bridge-Aggregation 99
+ description TO_{{ out_hostname }}
+ port link-type trunk
+ port trunk permit vlan 1 10 20
+ link-aggregation mode dynamic
+ stp edged-port
+{% endif %}
+#
+interface NULL0
+#
+interface Vlan-interface1
+ dhcp client identifier ascii 88df9e5e11ef-VLAN0001
+#
+{% if in_switch.out_ip is defined and in_switch.out_ip and in_switch.out_ip != '' %}
+interface Vlan 10
+ description EX-Sevice-GW
+ ip address {{ in_switch.out_ip }} {{ data.api_json.new_server_list[0].isp[0].netmask }}
+{% endif %}
+#
+{% if in_switch.in_ip is defined and in_switch.in_ip and in_switch.in_ip != '' %}
+interface Vlan 20
+ description IN-Sevice-GW
+ ip address {{ in_switch.in_ip }} {{data.api_json.node_list[0].ext.in_netmask}}
+{% endif %}
+#
+interface FortyGigE1/0/49
+ port link-mode bridge
+#
+interface FortyGigE1/0/50
+ port link-mode bridge
+#
+interface FortyGigE1/0/51
+ port link-mode bridge
+#
+interface FortyGigE1/0/52
+ port link-mode bridge
+#
+interface FortyGigE1/0/53
+ port link-mode bridge
+#
+interface FortyGigE1/0/54
+ port link-mode bridge
+#
+interface M-GigabitEthernet0/0/0
+ dhcp client identifier hex 0288df9e5e11ef
+#
+interface M-GigabitEthernet0/0/1
+ dhcp client identifier hex 0288df9e5e11ef
+{% set server_ports = [] %}
+{% for server in data.api_json.new_server_list %}
+{% if server.switch_port2 and server.switch_port2.sn == in_sn.val and server.switch_port2.port %}
+{% do server_ports.append(server.switch_port2.port) %}
+{% endif %}
+{% endfor %}
+
+{% for port_num in range(1, 49) -%}
+{% set interface_name = "Ten-GigabitEthernet1/0/" ~ port_num %}
+interface {{ interface_name }}
+{% set ns = namespace(is_uplink=false) %}
+{% if in_switch.to_out %}
+{% for agg in in_switch.to_out %}
+{% if agg.src.port == interface_name %}
+{% set ns.is_uplink = true %}
+ port link-mode bridge
+ description UpLink_TO_{{ out_hostname }}
+ port link-type trunk
+ port trunk permit vlan 1 10 20
+ stp edged-port
+ port link-aggregation group 99
+{% endif %}
+{% endfor %}
+{% endif %}
+
+{% if not ns.is_uplink and interface_name in server_ports %}
+ port access vlan 20
+ stp edged-port
+{% endif %}
+#
+{% endfor %}
+
+ scheduler logfile size 16
+#
+line class aux
+ user-role network-admin
+#
+line class vty
+ user-role network-operator
+#
+line aux 0
+ user-role network-admin
+#
+line vty 0 15
+ authentication-mode scheme
+ user-role network-operator
+ protocol inbound ssh
+ idle-timeout 60 0
+ command authorization
+ command accounting
+#
+line vty 16 63
+ user-role network-operator
+#
+{% for isp in data.api_json.node_list[0].isp %}
+{% if isp.gw %}
+ip route-static 0.0.0.0 0.0.0.0 vlan 10 {{ isp.gw }}
+{% endif %}
+{% endfor %}
+#
+ info-center logbuffer size 1024
+ info-center loghost source Vlan-interface10
+ info-center loghost 183.134.42.44 facility local4
+ info-center loghost 183.134.42.45 facility local4
+#
+ snmp-agent
+ snmp-agent local-engineid 800063A28088DF9E5E11F300000001
+ snmp-agent community read wpskingsoft
+ snmp-agent sys-info version v2c v3
+#
+ ssh server enable
+ ssh server acl 3004
+#
+ ntp-service enable
+ ntp-service unicast-server 120.92.21.92 source Vlan-interface10
+#
+acl number 3004 name vty_control
+ rule 100 permit icmp
+{% if in_switch.to_dn %}
+{% for agg in in_switch.to_dn %}
+{% for i in range(3) %}
+ rule 11{{ i }} permit ip source {{ agg.node_ip }} {{ agg.node_hostmask }}
+{% endfor %}
+{% endfor %}
+{% endif %}
+ rule 120 permit ip source 36.112.24.0 0.0.0.15
+ rule 160 permit ip source 120.92.215.38 0
+ rule 170 permit ip source 120.92.128.61 0
+ rule 180 permit ip source 120.253.244.201 0
+ rule 190 permit ip source 23.91.104.12 0
+ rule 200 permit ip source 121.46.235.17 0
+ rule 210 permit ip source 58.247.244.65 0
+ rule 220 permit ip source 110.43.80.181 0
+ rule 230 permit ip source 120.52.186.165 0
+ rule 240 permit ip source 39.156.46.205 0
+ rule 260 permit ip source 120.92.143.19 0
+ rule 270 permit ip source 172.16.200.0 0.0.0.255
+ rule 280 permit ip source 117.186.248.201 0
+ rule 290 permit ip source 120.92.116.37 0
+ rule 300 permit ip source 120.92.93.156 0
+ rule 310 permit ip source 120.92.217.232 0
+ rule 320 permit ip source 120.92.21.92 0
+ rule 340 permit ip source 59.174.186.16 0.0.0.7
+ rule 350 permit ip source 59.174.185.160 0.0.0.15
+ rule 360 permit ip source 218.104.100.64 0.0.0.7
+ rule 370 permit ip source 223.76.125.56 0.0.0.7
+ rule 380 permit ip source 104.250.56.44 0
+ rule 390 permit ip source 120.92.12.202 0
+ rule 400 permit ip source 113.57.62.7 0
+ rule 410 permit ip source 113.57.62.8 0
+ rule 1000 deny ip
+#
+{% if in_switch.out_ip %}
+hwtacacs nas-ip {{ in_switch.out_ip }}
+{% endif %}
+#
+hwtacacs scheme ksctacacs
+ primary authentication 120.92.143.19
+ primary authorization 120.92.143.19
+ primary accounting 120.92.143.19
+ secondary authentication 120.92.21.92
+ secondary authorization 120.92.21.92
+ secondary accounting 120.92.21.92
+ key authentication cipher $c$3$DkoU0KvyhM0GoJSRdg67HXGjp4+HXnzoZfCWd2c/wY5YxkU=
+ key authorization cipher $c$3$FV4EhKzYbA8/mZzDKu8r7QFM94zmEO6MMlauMRwwZnllQOA=
+ key accounting cipher $c$3$fW5pqZjZhpJ+gsDbm+M5ilLfvivgzYewgv6PLVCIl/5DlX0=
+ user-name-format without-domain
+#
+radius scheme system
+ user-name-format without-domain
+#
+domain ksc
+ authentication login hwtacacs-scheme ksctacacs local
+ authorization login hwtacacs-scheme ksctacacs local
+ accounting login hwtacacs-scheme ksctacacs local
+ authorization command hwtacacs-scheme ksctacacs local
+ accounting command hwtacacs-scheme ksctacacs
+#
+domain system
+#
+ domain default enable ksc
+#
+role name level-0
+ description Predefined level-0 role
+#
+role name level-1
+ description Predefined level-1 role
+#
+role name level-2
+ description Predefined level-2 role
+#
+role name level-3
+ description Predefined level-3 role
+#
+role name level-4
+ description Predefined level-4 role
+#
+role name level-5
+ description Predefined level-5 role
+#
+role name level-6
+ description Predefined level-6 role
+#
+role name level-7
+ description Predefined level-7 role
+#
+role name level-8
+ description Predefined level-8 role
+#
+role name level-9
+ description Predefined level-9 role
+#
+role name level-10
+ description Predefined level-10 role
+#
+role name level-11
+ description Predefined level-11 role
+#
+role name level-12
+ description Predefined level-12 role
+#
+role name level-13
+ description Predefined level-13 role
+#
+role name level-14
+ description Predefined level-14 role
+#
+user-group system
+#
+local-user builder class manage
+ password hash $h$6$d2VJ95IhCtYeCezt$g3C6Of4NEpk7WIgIthVaB9Xx/0PWa4VYKhmwebfrmptF3qWd4XUlHPMBADret6rimO4yI4/qgLTkmCn8uJ0vag==
+ service-type ssh terminal
+ authorization-attribute user-role network-admin
+ authorization-attribute user-role network-operator
+#
+local-user kscadmin class manage
+ password hash $h$6$qXcg5nIVb8pVphCo$6RwR2kHR6V2z2zo48TdHe93SHOW8di476AQDVIcaGDxyLnWtjCU9/IEe4Wnvc0R101PdAprS10ccTSZ3EmiwjA==
+ service-type ssh terminal
+ authorization-attribute user-role network-admin
+ authorization-attribute user-role network-operator
+#
+local-user kscop class manage
+ password hash $h$6$NsHnPwBRMY1TUtyT$JyAY1oTRSrw0vq9pNwQdwnnKPfWqTsalbqSq8crKVcZSt7w8bMoB4MayGzbKJ/Edx6p2MrTnLYNQn8LkDdXPKA==
+ service-type ssh terminal
+ authorization-attribute user-role network-admin
+ authorization-attribute user-role network-operator
+#
+return
