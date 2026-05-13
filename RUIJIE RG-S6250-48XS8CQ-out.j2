@@ -493,8 +493,9 @@ interface AggregatePort 99
  switchport trunk allowed vlan only 1,10,20
  spanning-tree portfast
 {% endif %}
-{#interface vlan相关配置#}
+{#聚合口结束#}
 !
+{#interface vlan相关配置#}
 interface VLAN 1
  description ILO_VLAN
  ip address {{data.api_json.node_list[0].ext.ilo_gw[0]}} {{data.api_json.node_list[0].ext.ilo_netmask[0]}}
@@ -516,9 +517,9 @@ interface Vlan 20
  description IN-Sevice-GW
  ip address {{ out_switch.in_ip }} {{data.api_json.node_list[0].ext.in_netmask}}
 {% endif %}
-
-{#OSPF#}
+{#interface vlan相关配置结束#}
 !
+{#OSPF#}
 router ospf 1
  router-id {{data.api_json.node_list[0].isp[0].gw}}
  graceful-restart
@@ -527,6 +528,7 @@ router ospf 1
 ipv6 router ospf 1
  router-id {{data.api_json.node_list[0].isp[0].gw}}
  graceful-restart
+{#OSPF#}
 !
 {#路由#}
 {% for upper in data.api_json.new_upper_list %}

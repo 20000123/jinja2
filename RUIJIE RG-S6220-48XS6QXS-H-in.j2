@@ -1,0 +1,198 @@
+Building configuration...
+Current configuration : 7152 bytes
+
+version 11.0(5)B9P87S3
+hostname {{ in_hostname }}
+!
+ethernet-port counter sample-period 1
+load-balance-profile ecmp
+ ipv4 field src-ip dst-ip l4-src-port l4-dst-port
+ ipv6 field src-ip dst-ip l4-src-port l4-dst-port
+!
+spanning-tree
+!
+ip access-list extended 2003
+ 97 permit udp any eq domain any
+ 99 permit icmp any any
+ 120 permit ip 36.112.24.0 0.0.0.15 any
+ 160 permit ip host 120.92.215.38 any
+ 170 permit ip host 120.92.128.61 any
+ 180 permit ip host 120.253.244.201 any
+ 190 permit ip host 23.91.104.12 any
+ 200 permit ip host 121.46.235.17 any
+ 210 permit ip host 58.247.244.65 any
+ 220 permit ip host 110.43.80.181 any
+ 230 permit ip host 120.52.186.165 any
+ 240 permit ip host 39.156.46.205 any
+ 260 permit ip host 120.92.143.19 any
+ 270 permit ip 172.16.200.0 0.0.0.255 any
+ 280 permit ip host 117.186.248.201 any
+ 290 permit ip host 120.92.116.37 any
+ 300 permit ip host 120.92.93.156 any
+ 310 permit ip host 120.92.217.232 any
+ 320 permit ip host 120.92.21.92 any
+ 340 permit ip 59.174.186.16 0.0.0.7 any
+ 350 permit ip 59.174.185.160 0.0.0.15 any
+ 360 permit ip 218.104.100.64 0.0.0.7 any
+ 370 permit ip 223.76.125.56 0.0.0.7 any
+ 380 permit ip host 104.250.56.44 any
+ 390 permit ip host 120.92.12.202 any
+ 400 permit ip host 113.57.62.7 any
+ 410 permit ip host 113.57.62.8 any
+!
+ip policy load-balance
+username builder privilege 15 password 7 120c001c495c73417f6d25
+username kscadmin privilege 15 password 7 122c161149092f536f6a
+!
+aaa new-model
+!
+aaa accounting exec default start-stop group tacacs+
+aaa accounting commands 0 default start-stop group tacacs+
+aaa accounting commands 1 default start-stop group tacacs+
+aaa accounting commands 2 default start-stop group tacacs+
+aaa accounting commands 3 default start-stop group tacacs+
+aaa accounting commands 14 default start-stop group tacacs+
+aaa accounting commands 15 default start-stop group tacacs+
+aaa authorization commands 0 default group tacacs+ local
+aaa authorization commands 1 default group tacacs+ local
+aaa authorization commands 2 default group tacacs+ local
+aaa authorization commands 3 default group tacacs+ local
+aaa authorization commands 14 default group tacacs+ local
+aaa authorization commands 15 default group tacacs+ local
+aaa authentication login console none
+aaa authentication login ksc group tacacs+ local
+no auto-provision
+!
+install 0 RG-S6220-48XS6QXS-H
+!
+sysmac 8005.8844.edd7
+!
+tcam-mode acl-max
+!
+nfpp
+!
+mtu forwarding 9216
+!
+service password-encryption
+!
+redundancy
+!
+ip ssh version 2
+service sysname
+logging userinfo command-log
+logging buffered 10240
+logging file flash:syslog
+logging flash interval 1
+logging trap debugging
+logging source interface VLAN 10
+logging facility local4
+logging server 183.134.42.44
+logging server 183.134.42.45
+clock timezone Beijing +8 0
+!
+ip tacacs source-interface VLAN 10
+tacacs-server timeout 1
+tacacs-server host 120.92.143.19
+tacacs-server host 120.92.21.92
+tacacs-server key 7 155a2637423f2929680a0d2523595c1e5f
+!
+enable password 7 043c0b053d0721545661
+enable service ssh-server
+no enable service telnet-server
+!
+vlan range 1,10,20
+!
+{# 端口配置 #}
+{% set server_ports = [] %}
+{% for server in data.api_json.new_server_list %}
+{% if server.switch_port2 and server.switch_port2.sn == in_sn and server.switch_port2.port %}
+{% do server_ports.append(server.switch_port2.port) %}
+{% endif %}
+{% endfor %}
+
+{% for port_num in range(1, 49) -%}
+{% set interface_name = "TenGigabitEthernet 0/" ~ port_num %}
+interface {{ interface_name }}
+{% set ns = namespace(is_uplink=false) %}
+{% if in_switch.to_out %}
+{% for agg in in_switch.to_out %}
+{% if agg.src.port == interface_name %}
+{% set ns.is_uplink = true %}
+ port link-mode bridge
+ description UpLink_TO_{{ out_hostname }}
+ port link-type trunk
+ port trunk permit vlan 1 10 20
+ stp edged-port
+ port link-aggregation group 99
+{% endif %}
+{% endfor %}
+{% endif %}
+
+{% if not ns.is_uplink and interface_name in server_ports %}
+ port access vlan 20
+ stp edged-port
+{% endif %}
+!
+{% endfor %}
+{# 端口配置结束 #}
+interface FortyGigabitEthernet 0/49
+!
+interface FortyGigabitEthernet 0/50
+!
+interface FortyGigabitEthernet 0/51
+!
+interface FortyGigabitEthernet 0/52
+!
+interface FortyGigabitEthernet 0/53
+!
+interface FortyGigabitEthernet 0/54
+!
+{# 聚合口配置 #}
+{% if out_switch.to_iin and out_switch.to_iin != '' %}
+interface AggregatePort 99
+ description TO_{{ out_hostname }}
+ switchport mode trunk
+ switchport trunk allowed vlan only 1,10,20
+ spanning-tree portfast
+{% endif %}
+{# 聚合口配置结束 #}
+!
+interface VLAN 1
+!
+{# vlan配置开始 #}
+{% if in_switch.out_ip is defined and in_switch.out_ip and in_switch.out_ip != '' %}
+interface Vlan 10
+ ip address {{ in_switch.out_ip }} {{ data.api_json.new_server_list[0].isp[0].netmask }}
+{% endif %}
+!
+{% if in_switch.in_ip is defined and in_switch.in_ip and in_switch.in_ip != '' %}
+interface Vlan 20
+ ip address {{ in_switch.in_ip }} {{data.api_json.node_list[0].ext.in_netmask}}
+{% endif %}
+{# vlan配置结束 #}
+!
+interface Mgmt 0
+!
+aggregateport load-balance enhanced profile ecmp
+!
+ntp update-calendar
+ntp server 120.92.21.92 source VLAN 10
+!
+{% for isp in data.api_json.node_list[0].isp %}
+{% if isp.gw %}
+ip route 0.0.0.0 0.0.0.0 {{ isp.gw }}
+{% endif %}
+{% endfor %}
+!
+snmp-server community 7 14055a1e2a1b252b164a073d ro
+!
+line console 0
+ privilege level 15
+ login authentication ksc
+line vty 0 15
+ transport input ssh
+ access-class 2003 in
+ privilege level 15
+ login authentication ksc
+!
+end

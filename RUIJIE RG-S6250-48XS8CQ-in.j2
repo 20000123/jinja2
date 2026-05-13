@@ -132,10 +132,9 @@ interface {{ interface_name }}
  port access vlan 20
  stp edged-port
 {% endif %}
-#
+!
 {% endfor %}
 {# 端口配置结束 #}
-!
 interface HundredGigabitEthernet 0/49
 !
 interface HundredGigabitEthernet 0/50
@@ -174,7 +173,7 @@ interface Vlan 10
 interface Vlan 20
  ip address {{ in_switch.in_ip }} {{data.api_json.node_list[0].ext.in_netmask}}
 {% endif %}
-{# vlan配置开始 #}
+{# vlan配置结束 #}
 !
 interface Mgmt 0
 !
