@@ -483,8 +483,6 @@ interface {{ port_name }}
 !
 {% endfor %}
 {#全端口配置结束#}
-
-
 {#聚合口配置#}
 {% if out_switch.to_iin and out_switch.to_iin != '' %}
 interface AggregatePort 99

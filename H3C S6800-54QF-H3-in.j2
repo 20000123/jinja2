@@ -1,13 +1,3 @@
-{% set in_switch = data.api_json.new_switch_list | selectattr('type', 'equalto', 'in') | list | first | default({}) %}
-{% set in_hostname = in_switch.hostname | default('未找到') %}
-{% set out_switch = data.api_json.new_switch_list | selectattr('type', 'equalto', 'out') | list | first | default({}) %}
-{% set out_hostname = out_switch.hostname | default('未找到') %}
-{% set out_sn = namespace(val="") %}
-{% set in_sn = namespace(val="") %}
-{% for sw in data.api_json.new_switch_list %}
-{% if sw.type == "out" %}{% set out_sn.val = sw.sn %}{% endif %}
-{% if sw.type == "in" %}{% set in_sn.val = sw.sn %}{% endif %}
-{% endfor %}
 #
  version 7.1.0, Release 2612P02
 #
