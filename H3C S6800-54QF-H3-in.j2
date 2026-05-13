@@ -84,7 +84,7 @@ interface M-GigabitEthernet0/0/1
  dhcp client identifier hex 0288df9e5e11ef
 {% set server_ports = [] %}
 {% for server in data.api_json.new_server_list %}
-{% if server.switch_port2 and server.switch_port2.sn == in_sn.val and server.switch_port2.port %}
+{% if server.switch_port2 and server.switch_port2.sn == in_sn and server.switch_port2.port %}
 {% do server_ports.append(server.switch_port2.port) %}
 {% endif %}
 {% endfor %}

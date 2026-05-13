@@ -66,8 +66,8 @@ interface Bridge-Aggregation99
  port link-type trunk
  port trunk permit vlan 1 10 20
  stp edged-port
- {% endif %}
- {#聚合口配置结束#}
+{% endif %}
+{#聚合口配置结束#}
 #
 interface NULL0
 #
@@ -130,7 +130,7 @@ interface M-GigabitEthernet0/0/1
  dhcp client identifier hex 02905d7c5ffd84
 #
 {# 遍历10G口：Ten-GigabitEthernet1/0/1-24 和 1/0/31-54 #}
-{% for port_num in range(1, 25) + range(31, 55) %}
+{% for port_num in range(1, 25) | list + range(31, 55) | list %}
 {% set port_name = 'Ten-GigabitEthernet1/0/' ~ port_num %}
 interface {{ port_name }}
 {# 判断1：是否为上联口 upper_list #}
