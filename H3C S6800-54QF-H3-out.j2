@@ -1,5 +1,5 @@
 #
- version 7.1.070, Release 6715
+ version 7.1.070, Release 2612P02
 #
  sysname {{ out_hostname }}
 #
@@ -10,11 +10,7 @@
  undo irf link-delay
  irf member 1 priority 1
 #
- parity-error consistency-check log enable
- parity-error unrecoverable log enable
- parity-error unrecoverable reboot
-#
-{#OSPF开始#}
+{#OSPF#}
 ospf 1 router-id {{data.api_json.node_list[0].isp[0].gw}}
  area 0.0.0.0
   network {{data.api_json.node_list[0].isp[0].gw}} 0.0.0.0
@@ -22,20 +18,19 @@ ospf 1 router-id {{data.api_json.node_list[0].isp[0].gw}}
 ospfv3 1
  router-id {{data.api_json.node_list[0].isp[0].gw}}
  area 0.0.0.0
-{#OSPF结束#}
+{#OSPF#}
 #
- undo ip load-sharing local-first enable
+ max-ecmp-num 32
  ip load-sharing mode per-flow dest-ip src-ip ip-pro dest-port src-port global
 #
  lldp global enable
 #
  system-working-mode standard
- hardware-resource switch-mode NORMAL
+ hardware-resource switch-mode 4
  hardware-resource routing-mode ipv6-128
- hardware-resource vxlan l2gw
- hardware-resource firmware-mode INT-PTP
- hardware-resource linkscan-mode software
- hardware-resource clock-mode tsc
+ hardware-resource vxlan l3gw24k
+ fan prefer-direction slot 1 port-to-power
+ password-recovery enable
 #
 vlan 1
  name EX-ILO-Vlan
@@ -60,28 +55,29 @@ qos policy remark-hpri-traffic
 #
  stp global enable
 #
-{#聚合口配置#}
+{# 聚合口配置 #}
 {% if out_switch.to_iin and out_switch.to_iin != '' %}
-interface Bridge-Aggregation99
+interface AggregatePort 99
  port link-type trunk
  port trunk permit vlan 1 10 20
+ link-aggregation mode dynamic
  stp edged-port
- {% endif %}
- {#聚合口配置结束#}
+{% endif %}
+{# 聚合口配置结束 #}
 #
 interface NULL0
 #
+{#interface vlan相关配置#}
 interface Vlan-interface1
  ip address {{data.api_json.node_list[0].ext.ilo_gw[0]}} {{data.api_json.node_list[0].ext.ilo_netmask[0]}}
- dhcp client identifier ascii 00905d7c5ffd84-VLAN0001
 #
 {% if out_switch.out_ip is defined and out_switch.out_ip and out_switch.out_ip != '' %}
 interface Vlan-interface10
  description EX-Sevice-GW
  ip address {{ out_switch.out_ip }} {{ data.api_json.new_server_list[0].isp[0].netmask }}
- ospfv3 1 area 0.0.0.0
 {% if out_switch.ipv6_ip is defined and out_switch.ipv6_ip and out_switch.ipv6_ip != '' %}
  ipv6 address {{ out_switch.ipv6_ip }}/{{ data.api_json.new_server_list[0].isp[0].ipv6_mask }}
+ ospfv3 1 area 0.0.0.0
 {% endif %}
 {% endif %}
 #
@@ -90,11 +86,12 @@ interface Vlan-interface20
  description IN-Sevice-GW
  ip address {{ out_switch.in_ip }} {{data.api_json.node_list[0].ext.in_netmask}}
 {% endif %}
+{#interface vlan相关配置#}
 #
 {#全端口配置开始#}
-{# 遍历百G口：HundredGigE1/0/25 到 1/0/30 #}
-{% for port_num in range(25, 31) %}
-{% set port_name = 'HundredGigE1/0/' ~ port_num %}
+{# 遍历49-56口：FortyGigE1/0/49 到 1/0/54 #}
+{% for port_num in range(49, 55) %}
+{% set port_name = 'FortyGigE1/0/' ~ port_num %}
 interface {{ port_name }}
 {% set ns = namespace(is_upper=false) %}
 {% for upper in data.api_json.new_upper_list %}
@@ -104,10 +101,6 @@ interface {{ port_name }}
  description TO_ISP
 {% set upper_ip_addr = upper.ip.split('/')[0] %}
  ip address {{ upper_ip_addr }} 255.255.255.252
- sflow flow collector 1
- sflow sampling-rate 4046
- sflow counter collector 1
- sflow counter interval 30
  packet-filter ipv6 3007 inbound
  packet-filter 3001 inbound
  qos wfq byte-count
@@ -123,16 +116,15 @@ interface {{ port_name }}
 {% endfor %}
 #
 {% endfor %}
+#
 interface M-GigabitEthernet0/0/0
- dhcp client identifier hex 02905d7c5ffd84
 #
 interface M-GigabitEthernet0/0/1
- dhcp client identifier hex 02905d7c5ffd84
 #
-{# 遍历10G口：Ten-GigabitEthernet1/0/1-24 和 1/0/31-54 #}
-{% for port_num in range(1, 25) + range(31, 55) %}
+{% for port_num in range(1, 49) %}
 {% set port_name = 'Ten-GigabitEthernet1/0/' ~ port_num %}
 interface {{ port_name }}
+
 {# 判断1：是否为上联口 upper_list #}
 {% set ns = namespace(is_upper=false, is_server_port=false) %}
 {% for upper in data.api_json.new_upper_list %}
@@ -142,10 +134,6 @@ interface {{ port_name }}
  description TO_ISP
 {% set upper_ip_addr = upper.ip.split('/')[0] %}
  ip address {{ upper_ip_addr }} 255.255.255.252
- sflow flow collector 1
- sflow sampling-rate 4046
- sflow counter collector 1
- sflow counter interval 30
  packet-filter ipv6 3007 inbound
  packet-filter 3001 inbound
  qos wfq byte-count
@@ -159,6 +147,7 @@ interface {{ port_name }}
 {% endif %}
 {% endif %}
 {% endfor %}
+
 {# 判断2：非上联口 → 服务器端口 #}
 {% if not ns.is_upper %}
 {% for server in data.api_json.new_server_list %}
@@ -170,10 +159,11 @@ interface {{ port_name }}
  qos trust dscp
 {% elif server.switch_port2.sn == out_sn and server.switch_port2.port == port_name %}
 {% set ns.is_server_port = true %}
- port link-mode bridge
 {% if server.type == 'lvs' %}
+ port link-mode bridge
  port access vlan 10
 {% else %}
+ port link-mode bridge
  port access vlan 20
 {% endif %}
  stp edged-port
@@ -181,6 +171,7 @@ interface {{ port_name }}
 {% endif %}
 {% endfor %}
 {% endif %}
+
 {# 判断3：级联口 #}
 {% if not ns.is_upper and not ns.is_server_port %}
 {% for sw in data.api_json.new_switch_list %}
@@ -200,7 +191,6 @@ interface {{ port_name }}
 {% if sw.to_mgt %}
 {% for link in sw.to_mgt %}
 {% if link.src.port == port_name %}
- port link-mode bridge
  description {{ mg_hostname }}
 {% endif %}
 {% endfor %}
@@ -211,7 +201,8 @@ interface {{ port_name }}
 #
 {% endfor %}
 {#全端口配置结束#}
-scheduler logfile size 16
+#
+ scheduler logfile size 16
 #
 line class aux
  user-role network-admin
@@ -277,9 +268,8 @@ line vty 16 63
  ipv6 route-static :: 0 {{ upper.switch_port }} {{ ipv6_next_hop }}
 {% endif %}
 {% endfor %}
-{#路由配置结束#}
+{#路由#}
 #
- info-center timestamp loghost date with-milliseconds
  info-center logbuffer size 1024
  info-center loghost source Vlan-interface10
  info-center loghost 112.84.131.170 facility local6
@@ -287,7 +277,7 @@ line vty 16 63
  info-center loghost 183.134.42.45 facility local4
 #
  snmp-agent
- snmp-agent local-engineid 800063A280905D7C5FFD8800000001
+ snmp-agent local-engineid 800063A28088DF9E5CC03D00000001
  snmp-agent community read wpskingsoft
  snmp-agent sys-info version v2c v3
 #
@@ -299,7 +289,7 @@ line vty 16 63
  ntp-service enable
  ntp-service unicast-server 120.92.21.92 source Vlan-interface10
 #
-acl number 3001 name For-CDN-Service
+acl number 3001
  rule 95 deny tcp destination-port eq 800
  rule 98 permit udp destination-port eq ntp
  rule 99 permit udp source-port eq dns
@@ -450,7 +440,7 @@ acl number 3001 name For-CDN-Service
  rule 999 permit icmp
  rule 1000 deny ip
 #
-acl number 3004 name vty_control
+acl number 3004
  rule 100 permit icmp
  rule 120 permit ip source 36.112.24.0 0.0.0.15
  rule 160 permit ip source 120.92.215.38 0
@@ -497,26 +487,32 @@ acl number 3066
  rule 85 permit ip destination 111.31.36.6 0
  rule 90 permit ip destination 104.250.33.100 0
  rule 95 permit ip destination 100.89.3.123 0
- rule 100 permit ip destination 110.43.222.175 0
- rule 105 permit ip destination 120.52.187.99 0
- rule 110 permit ip destination 110.43.107.99 0
+ rule 99 permit udp source-port eq dns
+ rule 100 permit tcp destination 110.43.222.175 0 destination-port range 10050 10052
+ rule 101 permit tcp destination-port range 8000 8100
+ rule 102 permit tcp destination-port eq 7582
+ rule 103 permit tcp destination-port eq 1935
+ rule 105 permit tcp destination 120.52.187.99 0 destination-port eq 843
+ rule 106 permit tcp destination-port eq 7578
+ rule 107 permit tcp destination-port eq 7485
+ rule 110 permit tcp destination 110.43.107.99 0 destination-port eq www
  rule 115 permit ip destination 111.31.36.9 0
- rule 120 permit ip destination 100.74.129.163 0
+ rule 120 permit tcp destination 100.74.129.163 0 destination-port eq 443
  rule 125 permit ip destination 111.31.36.48 0
- rule 130 permit ip destination 110.43.99.161 0
+ rule 130 permit udp destination 110.43.99.161 0 destination-port eq 443
  rule 135 permit ip destination 120.52.189.55 0
  rule 140 permit ip destination 110.43.222.197 0
  rule 145 permit ip destination 100.78.160.175 0
- rule 150 permit ip destination 100.78.160.190 0
+ rule 150 permit udp destination 100.78.160.190 0 destination-port eq 80
  rule 155 permit ip destination 100.78.160.173 0
- rule 160 permit ip destination 110.43.121.63 0
+ rule 160 permit udp destination 110.43.121.63 0 destination-port eq 1935
  rule 165 permit ip destination 111.31.36.131 0
- rule 170 permit ip destination 60.28.198.235 0
- rule 180 permit ip destination 121.46.245.223 0
+ rule 170 permit udp destination 60.28.198.235 0 destination-port eq 8000
+ rule 180 permit udp destination 121.46.245.223 0 source-port eq 443
  rule 185 permit ip destination 36.150.134.240 0
- rule 190 permit ip destination 58.247.245.252 0
+ rule 190 permit tcp destination 58.247.245.252 0 destination-port eq 9000
  rule 195 permit ip destination 111.31.36.106 0
- rule 200 permit ip destination 60.28.198.32 0
+ rule 200 permit tcp destination 60.28.198.32 0 destination-port eq 9443
  rule 205 permit ip destination 110.43.105.181 0
  rule 210 permit ip destination 110.43.222.12 0
  rule 215 permit ip destination 111.31.36.17 0
@@ -536,7 +532,7 @@ acl number 3066
  rule 285 permit ip destination 180.97.176.83 0
  rule 290 permit ip destination 120.131.7.213 0
  rule 295 permit ip destination 122.70.129.9 0
- rule 300 permit ip destination 117.139.18.9 0
+ rule 300 permit udp destination 117.139.18.9 0 destination-port eq snmp
  rule 305 permit ip destination 220.167.102.9 0
  rule 310 permit ip destination 120.192.64.137 0
  rule 315 permit ip destination 42.81.87.9 0
@@ -550,6 +546,7 @@ acl number 3066
  rule 355 permit ip destination 110.43.123.128 0.0.0.31
  rule 360 permit ip destination 58.220.38.230 0
  rule 365 permit ip destination 153.99.244.230 0
+ rule 998 permit tcp established
 #
 acl ipv6 number 3007 name IPV6-ACL
  rule 99 permit udp source-port eq dns
@@ -599,9 +596,9 @@ hwtacacs scheme ksctacacs
  secondary authentication 120.92.21.92
  secondary authorization 120.92.21.92
  secondary accounting 120.92.21.92
- key authentication cipher $c$3$yt8Q2d0/joVxKFsZz9/+I3iHoHblg1gf6ct9VWCh3/HDGWI=
- key authorization cipher $c$3$pw9VL4gzFQcJwBurBrEY6pC6OfgpgwIGJig70rkClI9RucI=
- key accounting cipher $c$3$FRlXXU34CLLFBip0snseD5K6KB6ZAwanFnlNSpOnjJlC4EQ=
+ key authentication cipher $c$3$k8/rQGq9eC+tThSlp9F+hd0BGPLH5n5jF3CFv1vTehcePvQ=
+ key authorization cipher $c$3$r7G7aeq4U0lVHXOHuq78ykhnIA/ol5dzZwB3IFOrF9KkbrE=
+ key accounting cipher $c$3$VDNlmjA6bHuuMYeFiQQnh3nwr9/yVIRSw671+h1en+k3ocQ=
  user-name-format without-domain
 #
 radius scheme system
@@ -666,22 +663,15 @@ role name level-14
 user-group system
 #
 local-user kscadmin class manage
- password hash $h$6$ubes9YGkK8cuPetC$jnfEbUv+cttSvsXEN9mH1Z/0nnyXxIcPa5ATytuvtMNPj7LmErTTVzjfzFLGSvrogjGW5HDgGgZ0RFJrU+v0+g==
+ password hash $h$6$h9HqLAY6asORCmF9$rU2Uyr3yntd38gw7yDn1HheOYK+l/xTHQwNVgA4oQkFa2XcVpC/j4rD8lkKCskiPEP7vF2CjxFHqsU3q++BC8w==
  service-type ssh terminal
  authorization-attribute user-role network-admin
  authorization-attribute user-role network-operator
 #
 local-user kscop class manage
- password hash $h$6$m0yooNRIEo54fbdh$p6cGRqpRpbLZsoFO7gVpvsSuSEqdnXiwKRAgofMoKV/msG2N2R7oBzU3W+dkGUjD0wpOXx+a4ASyv4lRSTqz0Q==
+ password hash $h$6$wQ/gZO309cNDfu5Y$2WRmC908WWp4tLsOdC0ZOePPfQnDlhkNTjgui+a1qYXHnoWo480kaC9MbfJgxvRqK+woLAbWs27P4lUSsUURaA==
  service-type ssh terminal
  authorization-attribute user-role network-admin
  authorization-attribute user-role network-operator
-#
- security-enhanced level 1
-#
- undo ssl renegotiation disable
- undo ssl version ssl3.0 disable
- undo ssl version tls1.0 disable
- undo ssl version tls1.1 disable
 #
 return

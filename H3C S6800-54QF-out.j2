@@ -70,7 +70,7 @@ interface Vlan-interface1
  ip address {{data.api_json.node_list[0].ext.ilo_gw[0]}} {{data.api_json.node_list[0].ext.ilo_netmask[0]}}
 #
 {% if out_switch.out_ip is defined and out_switch.out_ip and out_switch.out_ip != '' %}
-interface Vlan 10
+interface Vlan-interface10
  description EX-Sevice-GW
  ip address {{ out_switch.out_ip }} {{ data.api_json.new_server_list[0].isp[0].netmask }}
 {% if out_switch.ipv6_ip is defined and out_switch.ipv6_ip and out_switch.ipv6_ip != '' %}
@@ -80,7 +80,7 @@ interface Vlan 10
 {% endif %}
 #
 {% if out_switch.in_ip is defined and out_switch.in_ip and out_switch.in_ip != '' %}
-interface Vlan 20
+interface Vlan-interface20
  description IN-Sevice-GW
  ip address {{ out_switch.in_ip }} {{data.api_json.node_list[0].ext.in_netmask}}
 {% endif %}
@@ -117,7 +117,7 @@ interface {{ port_name }}
 interface M-GigabitEthernet0/0/0
 #
 {% for port_num in range(1, 49) %}
-{% set port_name = 'Ten1/0/' ~ port_num %}
+{% set port_name = 'Ten-GigabitEthernet1/0/' ~ port_num %}
 interface {{ port_name }}
 
 {# 判断1：是否为上联口 upper_list #}

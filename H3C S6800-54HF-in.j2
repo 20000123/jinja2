@@ -46,13 +46,13 @@ interface NULL0
 #
 {# vlan配置开始 #}
 {% if in_switch.out_ip is defined and in_switch.out_ip and in_switch.out_ip != '' %}
-interface Vlan 10
+interface Vlan-interface10
  description EX-Sevice-GW
  ip address {{ in_switch.out_ip }} {{ data.api_json.new_server_list[0].isp[0].netmask }}
 {% endif %}
 #
 {% if in_switch.in_ip is defined and in_switch.in_ip and in_switch.in_ip != '' %}
-interface Vlan 20
+interface Vlan-interface20
  description IN-Sevice-GW
  ip address {{ in_switch.in_ip }} {{data.api_json.node_list[0].ext.in_netmask}}
 {% endif %}

@@ -84,7 +84,7 @@ interface Vlan-interface10
 {% endif %}
 #
 {% if out_switch.in_ip is defined and out_switch.in_ip and out_switch.in_ip != '' %}
-interface Vlan 20
+interface Vlan-interface20
  description IN-Sevice-GW
  ip address {{ out_switch.in_ip }} {{data.api_json.node_list[0].ext.in_netmask}}
 {% endif %}

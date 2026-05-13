@@ -1,5 +1,5 @@
 #
- version 7.1.070, Release 6715
+ version 7.1.045, Release 2432P05
 #
  sysname {{ in_hostname }}
 #
@@ -9,23 +9,13 @@
  irf auto-update enable
  undo irf link-delay
  irf member 1 priority 1
-#
- parity-error consistency-check log enable
- parity-error unrecoverable log enable
- parity-error unrecoverable reboot
-#
- undo ip load-sharing local-first enable
- ip load-sharing mode per-flow dest-ip src-ip ip-pro dest-port src-port global
+ irf mode normal
 #
  lldp global enable
 #
  system-working-mode standard
- hardware-resource switch-mode NORMAL
- hardware-resource routing-mode ipv6-128
- hardware-resource vxlan l2gw
- hardware-resource firmware-mode INT-PTP
- hardware-resource linkscan-mode software
- hardware-resource clock-mode tsc
+ fan prefer-direction slot 1 port-to-power
+ password-recovery enable
 #
 vlan 1
 #
@@ -51,8 +41,6 @@ interface AggregatePort 99
 #
 interface NULL0
 #
-interface Vlan-interface1
- dhcp client identifier ascii 00882a5e66bbde-VLAN0001
 #
 {# vlan配置开始 #}
 {% if in_switch.out_ip is defined and in_switch.out_ip and in_switch.out_ip != '' %}
@@ -68,29 +56,19 @@ interface Vlan-interface20
 {% endif %}
 {# vlan配置结束 #}
 #
-interface HundredGigE1/0/25
+interface FortyGigE1/0/49
  port link-mode bridge
 #
-interface HundredGigE1/0/26
+interface FortyGigE1/0/50
  port link-mode bridge
 #
-interface HundredGigE1/0/27
+interface FortyGigE1/0/51
  port link-mode bridge
 #
-interface HundredGigE1/0/28
- port link-mode bridge
-#
-interface HundredGigE1/0/29
- port link-mode bridge
-#
-interface HundredGigE1/0/30
+interface FortyGigE1/0/52
  port link-mode bridge
 #
 interface M-GigabitEthernet0/0/0
- dhcp client identifier hex 02882a5e66bbde
-#
-interface M-GigabitEthernet0/0/1
- dhcp client identifier hex 02882a5e66bbde
 #
 {# 端口配置 #}
 {% set server_ports = [] %}
@@ -100,7 +78,7 @@ interface M-GigabitEthernet0/0/1
 {% endif %}
 {% endfor %}
 
-{% for port_num in range(1, 25) + range(31, 55) -%}
+{% for port_num in range(1, 49) -%}
 {% set interface_name = "Ten-GigabitEthernet1/0/" ~ port_num %}
 interface {{ interface_name }}
 {% set ns = namespace(is_uplink=false) %}
@@ -126,6 +104,7 @@ interface {{ interface_name }}
 #
 {% endfor %}
 {# 端口配置结束 #}
+#
  scheduler logfile size 16
 #
 line class aux
@@ -151,12 +130,11 @@ line vty 16 63
 {# 路由配置开始 #}
 {% for isp in data.api_json.node_list[0].isp %}
 {% if isp.gw %}
- ip route-static 0.0.0.0 0 {{ isp.gw }}
+ ip route-static 0.0.0.0 0 Vlan-interface10 {{ isp.gw }}
 {% endif %}
 {% endfor %}
 {# 路由配置结束 #}
 #
- info-center timestamp loghost date with-milliseconds
  info-center logbuffer size 1024
  info-center loghost source Vlan-interface10
  info-center loghost 112.84.131.170 facility local6
@@ -164,19 +142,19 @@ line vty 16 63
  info-center loghost 183.134.42.45 facility local4
 #
  snmp-agent
- snmp-agent local-engineid 800063A280882A5E66BBE200000001
+ snmp-agent local-engineid 800063A28090E710FE85B400000001
  snmp-agent community read wpskingsoft
  snmp-agent sys-info version v2c v3
 #
  ssh server enable
  ssh server acl 3004
 #
- ntp-service enable
- ntp-service unicast-server 120.92.21.92 source Vlan-interface10
-#
 acl number 3004 name vty_control
  rule 100 permit icmp
  rule 120 permit ip source 36.112.24.0 0.0.0.15
+ rule 130 permit ip source 120.92.215.53 0
+ rule 140 permit ip source 120.92.215.54 0
+ rule 150 permit ip source 120.92.215.37 0
  rule 160 permit ip source 120.92.215.38 0
  rule 170 permit ip source 120.92.128.61 0
  rule 180 permit ip source 120.253.244.201 0
@@ -188,16 +166,9 @@ acl number 3004 name vty_control
  rule 240 permit ip source 39.156.46.205 0
  rule 250 permit ip source 120.92.71.38 0
  rule 260 permit ip source 120.92.143.19 0
- rule 270 permit ip source 172.16.200.0 0.0.0.255
- rule 280 permit ip source 117.186.248.201 0
- rule 290 permit ip source 120.92.116.37 0
- rule 300 permit ip source 120.92.93.156 0
  rule 310 permit ip source 120.92.217.232 0
  rule 320 permit ip source 120.92.21.92 0
- rule 340 permit ip source 59.174.186.16 0.0.0.7
- rule 350 permit ip source 59.174.185.160 0.0.0.15
  rule 360 permit ip source 218.104.100.64 0.0.0.7
- rule 370 permit ip source 223.76.125.56 0.0.0.7
  rule 1000 deny ip
 #
 {# tacacs配置 #}
@@ -211,9 +182,9 @@ hwtacacs scheme ksctacacs
  secondary authentication 120.92.21.92
  secondary authorization 120.92.21.92
  secondary accounting 120.92.21.92
- key authentication cipher $c$3$QnpclqFMyjLjqVbB9Dxe+jAJQdOVeQGDFnJ0V63W0qpMBY0=
- key authorization cipher $c$3$DvyYTAH5TgMkg1K7F/PxINXu9sX6yIcNpbRj2RS3FdvWUPo=
- key accounting cipher $c$3$0XsBujI6hOXERJ7tOT0Z1+nfJhV0ygKjCzmPMn2GaBY0dm8=
+ key authentication cipher $c$3$1emUdqepVwtPF1BI3L7St9ihBahBiOwam1RR9bLt7YrS0AM=
+ key authorization cipher $c$3$0cgqZ8QVgRv4BW+snJVLVOjSE8uiDJKZgDE81SU8xZMN9l4=
+ key accounting cipher $c$3$YS6px3cW5Jw0jNh1fPdqRxiZqtv+lS8UPQs56bGPtMojITI=
  user-name-format without-domain
 #
 radius scheme system
@@ -278,28 +249,15 @@ role name level-14
 user-group system
 #
 local-user builder class manage
- password hash $h$6$TJC+s9uGw0g+HDP+$A/tIAU+7WClrg0Sr9Y6xFg4xZigdzCvar+VNf/RJSjxXSOQg7TlmuDFBPtUHVWuiuSs/WXqgAnjlPLXltoSh2g==
+ password hash $h$6$PltK4j3AhHWn2uz9$I9VF0+xgAlLXRZW3AAEMJLvUUh/G3s2IpiLc0pxZXuKm3ScUlaAIraSKlcsw+KOuHChwxtl6g+/EVfeEMj8qgA==
  service-type ssh terminal
  authorization-attribute user-role network-admin
  authorization-attribute user-role network-operator
 #
 local-user kscadmin class manage
- password hash $h$6$B+eTRy7rRnZmw5Jg$LuUCGlb9xM6ClTcF9l2gDxnOuBpWwagjkAzdJuYCKcn+rJzOgM4SaYNYjShwKNeK+dkl0Z8LVab5oYA2RiWh2A==
+ password hash $h$6$NvJAa0Y+60wiDlMc$k2dyriTWOp7qy5VRyHWaYzLNmNQ5CqKu3lNNS8237Wtl4A5GcEaBy0fxGoUTqUo8hpUDjYtQpj4+7WqmCTFDPg==
  service-type ssh terminal
  authorization-attribute user-role network-admin
  authorization-attribute user-role network-operator
-#
-local-user kscop class manage
- password hash $h$6$f5h9jf4bAy+tq0dB$KQ79GJ+a56rfxFEgulGUqEWPSfxGSYrVmjmfhav3e9TDvOY2UntqvE6Zrq0Fj2V9OIcWKUiUPCy3+bhrSK9VGg==
- service-type ssh terminal
- authorization-attribute user-role network-admin
- authorization-attribute user-role network-operator
-#
- security-enhanced level 1
-#
- undo ssl renegotiation disable
- undo ssl version ssl3.0 disable
- undo ssl version tls1.0 disable
- undo ssl version tls1.1 disable
 #
 return
