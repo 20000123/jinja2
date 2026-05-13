@@ -17,10 +17,24 @@ except ImportError:
 
 # ===================== 配置 =====================
 # 默认订单ID，可以通过命令行参数覆盖
-DEFAULT_ORDER_ID = "23812"
+DEFAULT_ORDER_ID = "19569"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 #DEFAULT_DATA_FILE = "ID.json"
 API_BASE_URL = "https://rtree.ksyun.com/kscrcdn_api/v1/workflow/order_raw/"
+
+# ===================== 自定义 Jinja2 过滤器 =====================
+def ip_wildcard(ip_block):
+    """将 CIDR 格式的 IP 转换为 IP+反掩码格式，如 1.2.3.0/24 -> 1.2.3.0 0.0.0.255"""
+    if not ip_block or "/" not in ip_block:
+        return ip_block or ""
+    addr, prefix_len = ip_block.split("/")
+    prefix_len = int(prefix_len)
+    mask = (0xFFFFFFFF << (32 - prefix_len)) & 0xFFFFFFFF
+    wildcard = (~mask) & 0xFFFFFFFF
+    wildcard_str = '.'.join(
+        str((wildcard >> (8 * i)) & 0xFF) for i in reversed(range(4))
+    )
+    return f"{addr} {wildcard_str}"
 
 # ===================== 加载模板环境 =====================
 env = Environment(
@@ -29,6 +43,7 @@ env = Environment(
     lstrip_blocks=True,
     extensions=['jinja2.ext.do']
 )
+env.filters['ip_wildcard'] = ip_wildcard
 
 # ===================== 定义常用变量 =====================
 def build_common_vars(data):
