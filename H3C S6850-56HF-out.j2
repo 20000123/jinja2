@@ -1,5 +1,5 @@
 #
- version 7.1.070, Release 6715
+ version 7.1.070, Release 6616
 #
  sysname {{ out_hostname }}
 #
@@ -10,9 +10,7 @@
  undo irf link-delay
  irf member 1 priority 1
 #
- parity-error consistency-check log enable
  parity-error unrecoverable log enable
- parity-error unrecoverable reboot
 #
 {#OSPF开始#}
 ospf 1 router-id {{data.api_json.node_list[0].isp[0].gw}}
@@ -30,12 +28,8 @@ ospfv3 1
  lldp global enable
 #
  system-working-mode standard
- hardware-resource switch-mode NORMAL
  hardware-resource routing-mode ipv6-128
- hardware-resource vxlan l2gw
- hardware-resource firmware-mode INT-PTP
- hardware-resource linkscan-mode software
- hardware-resource clock-mode tsc
+ password-recovery enable
 #
 vlan 1
  name EX-ILO-Vlan
@@ -60,15 +54,6 @@ qos policy remark-hpri-traffic
 #
  stp global enable
 #
-{#聚合口配置#}
-{% if out_switch.to_iin and out_switch.to_iin != '' %}
-interface Bridge-Aggregation99
- port link-type trunk
- port trunk permit vlan 1 10 20
- stp edged-port
-{% endif %}
-{#聚合口配置结束#}
-#
 interface NULL0
 #
 {#interface Vlan-interface配置#}
@@ -92,9 +77,15 @@ interface Vlan-interface20
 {% endif %}
 {#interface Vlan-interface配置#}
 #
+interface GigabitEthernet1/0/57
+ port link-mode bridge
+#
+interface GigabitEthernet1/0/58
+ port link-mode bridge
+#
 {#全端口配置开始#}
-{# 遍历百G口：HundredGigE1/0/25 到 1/0/30 #}
-{% for port_num in range(25, 31) %}
+{# 遍历百G口：HundredGigE1/0/25 到 1/0/32 #}
+{% for port_num in range(25, 33) %}
 {% set port_name = 'HundredGigE1/0/' ~ port_num %}
 interface {{ port_name }}
 {% set ns = namespace(is_upper=false) %}
@@ -125,21 +116,23 @@ interface {{ port_name }}
 #
 {% endfor %}
 interface M-GigabitEthernet0/0/0
- dhcp client identifier hex 02905d7c5ffd84
+ dhcp client identifier hex 029c54c2115350
 #
 interface M-GigabitEthernet0/0/1
- dhcp client identifier hex 02905d7c5ffd84
+ dhcp client identifier hex 029c54c2115350
 #
-{# 遍历10G口：Ten-GigabitEthernet1/0/1-24 和 1/0/31-54 #}
-{% for port_num in range(1, 25) | list + range(31, 55) | list %}
-{% set port_name = 'Ten-GigabitEthernet1/0/' ~ port_num %}
+{# 遍历25G口：Twenty-FiveGigE1/0/1-24 和 1/0/33-56 #}
+{% for port_num in range(1, 25) | list + range(33, 57) | list %}
+{% set port_name = 'Twenty-FiveGigE1/0/' ~ port_num %}
 interface {{ port_name }}
+
 {# 判断1：是否为上联口 upper_list #}
 {% set ns = namespace(is_upper=false, is_server_port=false) %}
 {% for upper in data.api_json.new_upper_list %}
 {% if upper.switch_port == port_name %}
 {% set ns.is_upper = true %}
  port link-mode route
+ speed 10000
  description TO_ISP
 {% set upper_ip_addr = upper.ip.split('/')[0] %}
  ip address {{ upper_ip_addr }} 255.255.255.252
@@ -160,18 +153,25 @@ interface {{ port_name }}
 {% endif %}
 {% endif %}
 {% endfor %}
+
 {# 判断2：非上联口 → 服务器端口 #}
 {% if not ns.is_upper %}
 {% for server in data.api_json.new_server_list %}
 {% if server.switch_port1.sn == out_sn and server.switch_port1.port == port_name %}
 {% set ns.is_server_port = true %}
  port link-mode bridge
+{% if server.type != 'cachelive' %}
+ speed 10000
+{% endif %}
  port access vlan 10
  stp edged-port
  qos trust dscp
 {% elif server.switch_port2.sn == out_sn and server.switch_port2.port == port_name %}
 {% set ns.is_server_port = true %}
  port link-mode bridge
+{% if server.type != 'cachelive' %}
+ speed 10000
+{% endif %}
 {% if server.type == 'lvs' %}
  port access vlan 10
 {% else %}
@@ -182,6 +182,7 @@ interface {{ port_name }}
 {% endif %}
 {% endfor %}
 {% endif %}
+
 {# 判断3：级联口 #}
 {% if not ns.is_upper and not ns.is_server_port %}
 {% for sw in data.api_json.new_switch_list %}
@@ -190,6 +191,7 @@ interface {{ port_name }}
 {% for link in sw.to_iin %}
 {% if link.src.port == port_name %}
  port link-mode bridge
+ speed 10000
  description DownLink_{{ in_hostname }}
  port link-type trunk
  port trunk permit vlan 1 10 20
@@ -212,7 +214,7 @@ interface {{ port_name }}
 #
 {% endfor %}
 {#全端口配置结束#}
-scheduler logfile size 16
+ scheduler logfile size 16
 #
 line class aux
  user-role network-admin
@@ -288,7 +290,7 @@ line vty 16 63
  info-center loghost 183.134.42.45 facility local4
 #
  snmp-agent
- snmp-agent local-engineid 800063A280905D7C5FFD8800000001
+ snmp-agent local-engineid 800063A2809C54C211535400000001
  snmp-agent community read wpskingsoft
  snmp-agent sys-info version v2c v3
 #
@@ -446,7 +448,6 @@ acl number 3001 name For-CDN-Service
  rule 572 permit ip source 120.92.198.130 0
  rule 573 permit ip source 111.31.70.114 0
  rule 574 permit ip source 120.92.128.18 0
- rule 575 permit ip source 104.250.53.95 0
  rule 998 permit tcp established
  rule 999 permit icmp
  rule 1000 deny ip
@@ -600,9 +601,9 @@ hwtacacs scheme ksctacacs
  secondary authentication 120.92.21.92
  secondary authorization 120.92.21.92
  secondary accounting 120.92.21.92
- key authentication cipher $c$3$yt8Q2d0/joVxKFsZz9/+I3iHoHblg1gf6ct9VWCh3/HDGWI=
- key authorization cipher $c$3$pw9VL4gzFQcJwBurBrEY6pC6OfgpgwIGJig70rkClI9RucI=
- key accounting cipher $c$3$FRlXXU34CLLFBip0snseD5K6KB6ZAwanFnlNSpOnjJlC4EQ=
+ key authentication cipher $c$3$DpxMUNqHRhbaFpe4UcQuXWN07EzFZqdmKEw4yBqAsXH8SjE=
+ key authorization cipher $c$3$2yYuUlAwjzmfrfs7RmWaEb7gkAeRnsgeK7kubJytmb1MpBw=
+ key accounting cipher $c$3$fCaITQUndFhbl9IIbwxjVqriVXAJ9QeB3q46jC+3HxEpc0M=
  user-name-format without-domain
 #
 radius scheme system
@@ -667,22 +668,15 @@ role name level-14
 user-group system
 #
 local-user kscadmin class manage
- password hash $h$6$ubes9YGkK8cuPetC$jnfEbUv+cttSvsXEN9mH1Z/0nnyXxIcPa5ATytuvtMNPj7LmErTTVzjfzFLGSvrogjGW5HDgGgZ0RFJrU+v0+g==
+ password hash $h$6$69EpyIeZmarbDbeJ$WWd29wAk+T8njhBvfOj1TXq3vt98GibVAgs5VNt0pEhgH3ZYKSQdfpsuKFeHKpvRgBCS6gR1uQoliHOVfj7p+Q==
  service-type ssh terminal
  authorization-attribute user-role network-admin
  authorization-attribute user-role network-operator
 #
 local-user kscop class manage
- password hash $h$6$m0yooNRIEo54fbdh$p6cGRqpRpbLZsoFO7gVpvsSuSEqdnXiwKRAgofMoKV/msG2N2R7oBzU3W+dkGUjD0wpOXx+a4ASyv4lRSTqz0Q==
+ password hash $h$6$HqQVD2pdjttEh762$xVVPHU9RsHfQf1Z13ykHP4C/P4+5UfHAIj139tBAtllV18alnvJJZNQvN0wAeSSkN3Of4xgDPH7cpa4DRgoWIA==
  service-type ssh terminal
  authorization-attribute user-role network-admin
  authorization-attribute user-role network-operator
-#
- security-enhanced level 1
-#
- undo ssl renegotiation disable
- undo ssl version ssl3.0 disable
- undo ssl version tls1.0 disable
- undo ssl version tls1.1 disable
 #
 return

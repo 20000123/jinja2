@@ -24,8 +24,9 @@ ospfv3 1
  area 0.0.0.0
 {#OSPF结束#}
 #
- undo ip load-sharing local-first enable
  ip load-sharing mode per-flow dest-ip src-ip ip-pro dest-port src-port global
+#
+ mac-address mac-move fast-update
 #
  lldp global enable
 #
@@ -35,7 +36,6 @@ ospfv3 1
  hardware-resource vxlan l2gw
  hardware-resource firmware-mode INT-PTP
  hardware-resource linkscan-mode software
- hardware-resource clock-mode tsc
 #
 vlan 1
  name EX-ILO-Vlan
@@ -58,18 +58,13 @@ traffic behavior remark-hpri-lp5
 qos policy remark-hpri-traffic
  classifier match-hpri-traffic behavior remark-hpri-lp5
 #
+ stp port-log instance 0 to 4094
+ stp port-log vlan 1 to 4094
  stp global enable
 #
-{#聚合口配置#}
-{% if out_switch.to_iin and out_switch.to_iin != '' %}
-interface Bridge-Aggregation99
- port link-type trunk
- port trunk permit vlan 1 10 20
- stp edged-port
-{% endif %}
-{#聚合口配置结束#}
-#
 interface NULL0
+#
+interface LoopBack0
 #
 {#interface Vlan-interface配置#}
 interface Vlan-interface1
@@ -93,8 +88,8 @@ interface Vlan-interface20
 {#interface Vlan-interface配置#}
 #
 {#全端口配置开始#}
-{# 遍历百G口：HundredGigE1/0/25 到 1/0/30 #}
-{% for port_num in range(25, 31) %}
+{# 遍历百G口：HundredGigE1/0/49 到 1/0/56 #}
+{% for port_num in range(49, 57) %}
 {% set port_name = 'HundredGigE1/0/' ~ port_num %}
 interface {{ port_name }}
 {% set ns = namespace(is_upper=false) %}
@@ -105,10 +100,6 @@ interface {{ port_name }}
  description TO_ISP
 {% set upper_ip_addr = upper.ip.split('/')[0] %}
  ip address {{ upper_ip_addr }} 255.255.255.252
- sflow flow collector 1
- sflow sampling-rate 4046
- sflow counter collector 1
- sflow counter interval 30
  packet-filter ipv6 3007 inbound
  packet-filter 3001 inbound
  qos wfq byte-count
@@ -125,28 +116,23 @@ interface {{ port_name }}
 #
 {% endfor %}
 interface M-GigabitEthernet0/0/0
- dhcp client identifier hex 02905d7c5ffd84
+ dhcp client identifier hex 0274adcb57a8c6
 #
-interface M-GigabitEthernet0/0/1
- dhcp client identifier hex 02905d7c5ffd84
-#
-{# 遍历10G口：Ten-GigabitEthernet1/0/1-24 和 1/0/31-54 #}
-{% for port_num in range(1, 25) | list + range(31, 55) | list %}
-{% set port_name = 'Ten-GigabitEthernet1/0/' ~ port_num %}
+{# 遍历25G口：Twenty-FiveGigE1/0/1 到 1/0/48 #}
+{% for port_num in range(1, 49) %}
+{% set port_name = 'Twenty-FiveGigE1/0/' ~ port_num %}
 interface {{ port_name }}
+
 {# 判断1：是否为上联口 upper_list #}
 {% set ns = namespace(is_upper=false, is_server_port=false) %}
 {% for upper in data.api_json.new_upper_list %}
 {% if upper.switch_port == port_name %}
 {% set ns.is_upper = true %}
  port link-mode route
+ speed 10000
  description TO_ISP
 {% set upper_ip_addr = upper.ip.split('/')[0] %}
  ip address {{ upper_ip_addr }} 255.255.255.252
- sflow flow collector 1
- sflow sampling-rate 4046
- sflow counter collector 1
- sflow counter interval 30
  packet-filter ipv6 3007 inbound
  packet-filter 3001 inbound
  qos wfq byte-count
@@ -160,21 +146,32 @@ interface {{ port_name }}
 {% endif %}
 {% endif %}
 {% endfor %}
+
 {# 判断2：非上联口 → 服务器端口 #}
 {% if not ns.is_upper %}
 {% for server in data.api_json.new_server_list %}
 {% if server.switch_port1.sn == out_sn and server.switch_port1.port == port_name %}
 {% set ns.is_server_port = true %}
  port link-mode bridge
+{% if server.type != 'cachelive' %}
+ speed 10000
+{% endif %}
  port access vlan 10
  stp edged-port
  qos trust dscp
 {% elif server.switch_port2.sn == out_sn and server.switch_port2.port == port_name %}
 {% set ns.is_server_port = true %}
- port link-mode bridge
 {% if server.type == 'lvs' %}
+ port link-mode bridge
+{% if server.type != 'cachelive' %}
+ speed 10000
+{% endif %}
  port access vlan 10
 {% else %}
+ port link-mode bridge
+{% if server.type != 'cachelive' %}
+ speed 10000
+{% endif %}
  port access vlan 20
 {% endif %}
  stp edged-port
@@ -182,6 +179,7 @@ interface {{ port_name }}
 {% endif %}
 {% endfor %}
 {% endif %}
+
 {# 判断3：级联口 #}
 {% if not ns.is_upper and not ns.is_server_port %}
 {% for sw in data.api_json.new_switch_list %}
@@ -190,6 +188,7 @@ interface {{ port_name }}
 {% for link in sw.to_iin %}
 {% if link.src.port == port_name %}
  port link-mode bridge
+ speed 10000
  description DownLink_{{ in_hostname }}
  port link-type trunk
  port trunk permit vlan 1 10 20
@@ -201,7 +200,6 @@ interface {{ port_name }}
 {% if sw.to_mgt %}
 {% for link in sw.to_mgt %}
 {% if link.src.port == port_name %}
- port link-mode bridge
  description {{ mg_hostname }}
 {% endif %}
 {% endfor %}
@@ -211,8 +209,7 @@ interface {{ port_name }}
 {% endif %}
 #
 {% endfor %}
-{#全端口配置结束#}
-scheduler logfile size 16
+ scheduler logfile size 16
 #
 line class aux
  user-role network-admin
@@ -283,17 +280,19 @@ line vty 16 63
  info-center timestamp loghost date with-milliseconds
  info-center logbuffer size 1024
  info-center loghost source Vlan-interface10
- info-center loghost 112.84.131.170 facility local6
  info-center loghost 183.134.42.44 facility local4
  info-center loghost 183.134.42.45 facility local4
 #
  snmp-agent
- snmp-agent local-engineid 800063A280905D7C5FFD8800000001
+ snmp-agent local-engineid 800063A28074ADCB57A8CA00000001
  snmp-agent community read wpskingsoft
  snmp-agent sys-info version v2c v3
 #
  ssh server enable
  ssh server acl 3004
+#
+ arp ip-conflict log prompt
+ arp user-ip-conflict record enable
 #
  qos vlan-policy remark-hpri-traffic vlan 10 inbound
 #
@@ -443,6 +442,8 @@ acl number 3001 name For-CDN-Service
  rule 567 permit ip source 113.57.62.8 0
  rule 568 permit tcp destination-port eq 5160
  rule 569 permit udp destination-port eq 5160
+ rule 570 permit tcp destination-port range 8218 8219
+ rule 571 permit tcp destination-port range 8318 8319
  rule 572 permit ip source 120.92.198.130 0
  rule 573 permit ip source 111.31.70.114 0
  rule 574 permit ip source 120.92.128.18 0
@@ -475,6 +476,7 @@ acl number 3004 name vty_control
  rule 360 permit ip source 218.104.100.64 0.0.0.7
  rule 370 permit ip source 223.76.125.56 0.0.0.7
  rule 380 permit ip source 104.250.56.44 0
+ rule 390 permit ip source 120.92.12.202 0
  rule 400 permit ip source 113.57.62.7 0
  rule 410 permit ip source 113.57.62.8 0
  rule 1000 deny ip
@@ -600,9 +602,9 @@ hwtacacs scheme ksctacacs
  secondary authentication 120.92.21.92
  secondary authorization 120.92.21.92
  secondary accounting 120.92.21.92
- key authentication cipher $c$3$yt8Q2d0/joVxKFsZz9/+I3iHoHblg1gf6ct9VWCh3/HDGWI=
- key authorization cipher $c$3$pw9VL4gzFQcJwBurBrEY6pC6OfgpgwIGJig70rkClI9RucI=
- key accounting cipher $c$3$FRlXXU34CLLFBip0snseD5K6KB6ZAwanFnlNSpOnjJlC4EQ=
+ key authentication cipher $c$3$5VyPnTIpxWLdVA30BR/KK8C1kbFFEpjyoQk77OzxHUYFPUI=
+ key authorization cipher $c$3$ik/2nTOMM/dA3peGjLHZ5DPOY/cUGJPuN35KlWIgB3E7GVE=
+ key accounting cipher $c$3$Zd1qQIk18mRN59T0ECvtsaJXTrqE8PHQYUgwwNTijL5awh4=
  user-name-format without-domain
 #
 radius scheme system
@@ -667,13 +669,13 @@ role name level-14
 user-group system
 #
 local-user kscadmin class manage
- password hash $h$6$ubes9YGkK8cuPetC$jnfEbUv+cttSvsXEN9mH1Z/0nnyXxIcPa5ATytuvtMNPj7LmErTTVzjfzFLGSvrogjGW5HDgGgZ0RFJrU+v0+g==
+ password hash $h$6$7f8Ju3yD/lGAfVNx$oQvMHs6iCKBQqVdl1WewxdMx65vmKJz1JAMA1Sy9HrNmKUjEle7EzF96k5EnBs7P3WPi92CCW19Hg2jhqk97Ew==
  service-type ssh terminal
  authorization-attribute user-role network-admin
  authorization-attribute user-role network-operator
 #
 local-user kscop class manage
- password hash $h$6$m0yooNRIEo54fbdh$p6cGRqpRpbLZsoFO7gVpvsSuSEqdnXiwKRAgofMoKV/msG2N2R7oBzU3W+dkGUjD0wpOXx+a4ASyv4lRSTqz0Q==
+ password hash $h$6$IRSd0UB0Sv8gbxVF$bwv8ZSBw5brmYBTH+9DsVjRQ8ea/sqQ8lLBbNsg51l3G61cGfwTBmn2gu5jDvBCzt9sQitShPlzg1Gkculj8Aw==
  service-type ssh terminal
  authorization-attribute user-role network-admin
  authorization-attribute user-role network-operator
