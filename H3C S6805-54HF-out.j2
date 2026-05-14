@@ -65,6 +65,7 @@ qos policy remark-hpri-traffic
 interface Bridge-Aggregation99
  port link-type trunk
  port trunk permit vlan 1 10 20
+ link-aggregation mode dynamic
  stp edged-port
 {% endif %}
 {#聚合口配置结束#}

@@ -54,6 +54,16 @@ qos policy remark-hpri-traffic
 #
  stp global enable
 #
+{#聚合口配置#}
+{% if out_switch.to_iin and out_switch.to_iin != '' %}
+interface Bridge-Aggregation99
+ port link-type trunk
+ port trunk permit vlan 1 10 20
+ link-aggregation mode dynamic
+ stp edged-port
+{% endif %}
+{#聚合口配置结束#}
+#
 interface NULL0
 #
 {#interface Vlan-interface配置#}

@@ -63,6 +63,7 @@ qos policy remark-hpri-traffic
 interface Bridge-Aggregation99
  port link-type trunk
  port trunk permit vlan 1 10 20
+ link-aggregation mode dynamic
  stp edged-port
 {% endif %}
 {#聚合口配置结束#}
@@ -103,10 +104,6 @@ interface {{ port_name }}
  description TO_ISP
 {% set upper_ip_addr = upper.ip.split('/')[0] %}
  ip address {{ upper_ip_addr }} 255.255.255.252
- sflow flow collector 1
- sflow sampling-rate 4046
- sflow counter collector 1
- sflow counter interval 30
  packet-filter ipv6 3007 inbound
  packet-filter 3001 inbound
  qos wfq byte-count
@@ -141,10 +138,6 @@ interface {{ port_name }}
  description TO_ISP
 {% set upper_ip_addr = upper.ip.split('/')[0] %}
  ip address {{ upper_ip_addr }} 255.255.255.252
- sflow flow collector 1
- sflow sampling-rate 4046
- sflow counter collector 1
- sflow counter interval 30
  packet-filter ipv6 3007 inbound
  packet-filter 3001 inbound
  qos wfq byte-count
