@@ -517,6 +517,10 @@ interface Vlan 20
 {% endif %}
 {#interface vlan相关配置结束#}
 !
+interface Mgmt 0
+!
+aggregateport load-balance enhanced profile ecmp
+!
 {#OSPF#}
 router ospf 1
  router-id {{data.api_json.node_list[0].isp[0].gw}}
